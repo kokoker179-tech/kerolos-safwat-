@@ -1,0 +1,40 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isSignedIn() { return request.auth != null; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function incoming() { return request.resource.data; }
+    
+    function isValidBooking(data) {
+        return data.name is string && data.name.size() > 0 && data.name.size() <= 100
+            && data.year is string && data.year.size() <= 20
+            && data.phone is string && data.phone.size() > 0 && data.phone.size() <= 20
+            && data.gender is string && data.gender.size() <= 10
+            && data.createdAt is timestamp
+            && data.eventId is string && data.eventId.size() > 0 && data.eventId.size() <= 50;
+    }
+
+    // Default deny all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Events collection
+    match /events/{eventId} {
+      allow read: if true; 
+    }
+
+    // TicketTypes collection
+    match /events/{eventId}/ticketTypes/{ticketTypeId} {
+      allow read: if true;
+    }
+
+    // Bookings collection
+    match /bookings/{bookingId} {
+      allow create: if isValidBooking(incoming()) && isValidId(bookingId);
+      allow read: if true; 
+      allow update, delete: if false;
+    }
+  }
+}

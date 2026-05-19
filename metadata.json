@@ -1,0 +1,8 @@
+{
+  "name": "Remix: حجز حفلة التخرج 2026",
+  "description": "كنيسة الملاك روفائيل ",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
