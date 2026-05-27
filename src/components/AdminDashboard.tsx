@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { collection, getDocs, deleteDoc, doc } from 'firebase/firestore';
 import { getDb } from '../lib/firebase';
-import { Trash2, RefreshCw, Users, BookOpen } from 'lucide-react';
+import { Trash2, RefreshCw, Users, BookOpen, BarChart3 } from 'lucide-react';
+import { BookingStats } from './BookingStats';
 
 interface Booking {
   id: string;
@@ -73,15 +74,7 @@ export const AdminDashboard = () => {
                     <p className="text-3xl font-black">{bookings.length}</p>
                 </div>
             </div>
-            <div className="p-6 rounded-3xl bg-[#111] border border-white/10 flex items-center gap-4">
-                <div className="p-4 bg-purple-500/10 rounded-2xl text-purple-500">
-                    <BookOpen className="w-8 h-8" />
-                </div>
-                <div>
-                    <p className="text-gray-400 text-sm">التحديث الأخير</p>
-                    <p className="text-xl font-bold">{new Date().toLocaleTimeString('ar-EG')}</p>
-                </div>
-            </div>
+            <BookingStats bookings={bookings} />
         </div>
         
         <div className="grid gap-4">

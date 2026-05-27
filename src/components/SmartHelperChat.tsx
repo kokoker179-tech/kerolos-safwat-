@@ -74,7 +74,20 @@ export default function SmartHelperChat() {
                   {msg.text}
                 </div>
               ))}
-              {isLoading && <div className="bg-white/5 p-3 rounded-xl self-start text-sm text-gray-400">جاري التفكير...</div>}
+              {isLoading && (
+                <div className="bg-white/5 p-4 rounded-xl self-start flex items-center gap-2">
+                  <div className="flex gap-1.5">
+                    {[...Array(3)].map((_, i) => (
+                      <motion.div
+                        key={i}
+                        className="w-2 h-2 rounded-full bg-gray-500"
+                        animate={{ y: [0, -6, 0] }}
+                        transition={{ repeat: Infinity, duration: 0.6, delay: i * 0.2 }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="p-4 border-t border-white/10 bg-[#1a1a1a] flex gap-2">

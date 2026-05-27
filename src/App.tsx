@@ -7,10 +7,13 @@ import React, { useState, useEffect } from 'react';
 import { AdminDashboard } from './components/AdminDashboard';
 import { collection, addDoc, Timestamp, query, where, getDocs, doc, getDocFromServer, runTransaction } from 'firebase/firestore';
 import { getDb } from './lib/firebase';
-import { PartyPopper, CheckCircle } from 'lucide-react';
+import { PartyPopper, CheckCircle, Award, Camera, Music, CreditCard, Smartphone, Receipt } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import SmartHelperChat from './components/SmartHelperChat';
 import ContactPage from './components/ContactPage';
+import { FAQ } from './components/FAQ';
+import { CountdownTimer } from './components/CountdownTimer';
+import { VenueDetails } from './components/VenueDetails';
 
 export default function App() {
   const [currentPath, setCurrentPath] = useState(window.location.hash || '#/');
@@ -26,11 +29,14 @@ export default function App() {
   }
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
   const [isContactOpen, setIsContactOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isPaymentLoading, setIsPaymentLoading] = useState(false);
+  const [pendingBooking, setPendingBooking] = useState<any>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [bookingFormData, setBookingFormData] = useState({ name: '', year: 'أولي', phone: '', gender: 'بنين' });
+  const [bookingFormData, setBookingFormData] = useState({ name: '', year: 'أولي', phone: '', gender: 'بنين', paymentMethod: '' });
   const [isConnected, setIsConnected] = useState(true);
 
   useEffect(() => {
@@ -54,6 +60,22 @@ export default function App() {
     setErrorMessage(null);
     setIsModalOpen(true);
   };
+
+  const Highlights = () => (
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-4xl mx-auto px-6 mb-16">
+      {[
+        { title: "تكريم الخريجين", desc: "لحظات لا تُنسى", icon: <Award className="w-8 h-8 text-yellow-400" /> },
+        { title: "تصوير احترافي", desc: "ذكرياتك موثقة", icon: <Camera className="w-8 h-8 text-cyan-400" /> },
+        { title: "فقرات موسيقية", desc: "أجواء مبهجة", icon: <Music className="w-8 h-8 text-purple-400" /> }
+      ].map((item, i) => (
+        <motion.div key={i} whileHover={{ y: -5 }} className="p-6 rounded-3xl bg-white/5 border border-white/10 hover:border-pink-500/50 transition-all flex flex-col gap-4 group">
+          <div className="p-3 rounded-full bg-white/5 w-fit group-hover:bg-pink-500/20 transition-colors">{item.icon}</div>
+          <h3 className="font-extrabold text-xl text-white tracking-tight">{item.title}</h3>
+          <p className="text-gray-400 text-sm group-hover:text-gray-200">{item.desc}</p>
+        </motion.div>
+      ))}
+    </div>
+  );
 
 enum OperationType {
   CREATE = 'create',
@@ -108,8 +130,7 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
     setErrorMessage(null);
 
     try {
-      // Use a transaction for atomic check-and-write
-      await runTransaction(db, async (transaction) => {
+        // Check for duplicates before initiating payment
         const q = query(
           collection(db, 'bookings'),
           where('name', '==', bookingFormData.name)
@@ -120,26 +141,60 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
           throw new Error('NAME_EXISTS');
         }
 
-        const newBookingRef = doc(collection(db, 'bookings'));
-        transaction.set(newBookingRef, {
+        if (!bookingFormData.paymentMethod) {
+          throw new Error('PAYMENT_METHOD_REQUIRED');
+        }
+
+        setPendingBooking({
           ...bookingFormData,
           createdAt: Timestamp.now(),
           eventId: 'neon-nights-2026'
         });
-      });
-      
-      setIsModalOpen(false);
-      setIsSuccessModalOpen(true);
-      setBookingFormData({ name: '', year: 'أولي', phone: '', gender: 'بنين' });
+        
+        setIsModalOpen(false);
+        setIsPaymentModalOpen(true);
+        setBookingFormData({ name: '', year: 'أولي', phone: '', gender: 'بنين', paymentMethod: '' });
     } catch (error: any) {
       if (error.message === 'NAME_EXISTS') {
         setErrorMessage('هذا الاسم محجوز بالفعل! يرجى اختيار اسم آخر.');
+      } else if (error.message === 'PAYMENT_METHOD_REQUIRED') {
+        setErrorMessage('يرجى اختيار وسيلة دفع.');
       } else {
-        console.error('Booking error:', error);
-        setErrorMessage('حدث خطأ أثناء الحجز، يرجى المحاولة لاحقاً.');
+        console.error('Booking pre-check error:', error);
+        setErrorMessage('حدث خطأ أثناء التحقق، يرجى المحاولة لاحقاً.');
       }
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handlePayment = async () => {
+    setIsPaymentLoading(true);
+    try {
+      const response = await fetch("/api/payment/create-kashier-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: 100, currency: 'EGP', paymentMethod: pendingBooking.paymentMethod, paymentPhone: pendingBooking.phone })
+      });
+      const data = await response.json();
+      
+      // Simulate successful payment validation
+      if (data.url) {
+        // In real app, this redirects.
+        // For this task, assume redirected back with success query params.
+        
+        // Finalize booking
+        const db = getDb();
+        await addDoc(collection(db, 'bookings'), pendingBooking);
+        
+        setIsPaymentModalOpen(false);
+        setIsSuccessModalOpen(true);
+        setPendingBooking(null);
+      }
+    } catch (error) {
+      console.error("Payment error:", error);
+    } finally {
+      setIsPaymentLoading(false);
     }
   };
 
@@ -177,8 +232,10 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
           </h1>
           
           <p className="text-base sm:text-lg text-gray-400 max-w-md mx-auto lg:mx-0">
-            لم يتم كتابة وصف حتي الآن
+            احتفالية خاصة لتكريم طلاب الثانوية العامة، تجتمع فيها الذكريات والأحلام في ليلة لا تُنسى.
           </p>
+
+          <CountdownTimer targetDate="2026-06-25T20:00:00" />
 
           <div className="flex gap-6 sm:gap-10 py-4 justify-center lg:justify-start">
             <div className="flex flex-col">
@@ -195,11 +252,13 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
             </div>
           </div>
 
-          <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => handleBookTicket()} className="w-full sm:w-fit px-12 py-4 bg-white text-black font-black text-lg rounded-xl hover:bg-pink-500 hover:text-white transition-all shadow-[0_10px_30px_rgba(255,255,255,0.1)] mx-auto lg:mx-0">
+          <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => handleBookTicket()} className="w-full sm:w-fit px-12 py-4 bg-white text-black font-black text-lg rounded-2xl hover:bg-pink-500 hover:text-white transition-all shadow-[0_10px_30px_rgba(255,100,200,0.3)] mx-auto lg:mx-0">
             احجز تذكرتك الآن
           </motion.button>
         </div>
       </main>
+      
+      <Highlights />
 
       {/* Booking Modal */}
       <AnimatePresence>
@@ -219,26 +278,111 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
             >
               <h2 className="text-3xl font-black mb-6 text-white tracking-tight">تسجيل الحجز</h2>
               {errorMessage && <p className="mb-4 text-red-500 font-medium text-center bg-red-500/10 p-3 rounded-xl">{errorMessage}</p>}
-              <div className="space-y-4">
-                <motion.input whileFocus={{ scale: 1.02 }} type="text" placeholder="الاسم" required className="w-full p-4 rounded-xl bg-white/5 border border-white/10 focus:border-pink-500 outline-none transition-all" value={bookingFormData.name} onChange={(e) => setBookingFormData({...bookingFormData, name: e.target.value})} />
-                <motion.select whileFocus={{ scale: 1.02 }} className="w-full p-4 rounded-xl bg-white/5 border border-white/10 focus:border-pink-500 outline-none transition-all" value={bookingFormData.gender} onChange={(e) => setBookingFormData({...bookingFormData, gender: e.target.value})}>
-                  <option value="بنين">بنين</option>
-                  <option value="بنات">بنات</option>
-                </motion.select>
-                <motion.select whileFocus={{ scale: 1.02 }} className="w-full p-4 rounded-xl bg-white/5 border border-white/10 focus:border-pink-500 outline-none transition-all" value={bookingFormData.year} onChange={(e) => setBookingFormData({...bookingFormData, year: e.target.value})}>
-                  <option value="أولي">أولي ثانوي</option>
-                  <option value="ثانية">ثانية ثانوي</option>
-                  <option value="ثالثة">ثالثة ثانوي</option>
-                </motion.select>
-                <motion.input whileFocus={{ scale: 1.02 }} type="tel" placeholder="رقم الهاتف" required className="w-full p-4 rounded-xl bg-white/5 border border-white/10 focus:border-pink-500 outline-none transition-all" value={bookingFormData.phone} onChange={(e) => setBookingFormData({...bookingFormData, phone: e.target.value})} />
+              <div className="space-y-6">
+                <div>
+                  <label className="block mb-2 text-sm text-gray-300 font-medium">الاسم الكريم</label>
+                  <motion.input whileFocus={{ scale: 1.01 }} type="text" placeholder="مثال: أحمد محمد" required className="w-full p-4 rounded-xl bg-white/5 border border-white/10 focus:border-pink-500 focus:bg-white/10 outline-none transition-all placeholder:text-gray-600" value={bookingFormData.name} onChange={(e) => setBookingFormData({...bookingFormData, name: e.target.value})} />
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <label className="block mb-2 text-sm text-gray-300 font-medium">النوع</label>
+                        <motion.select whileFocus={{ scale: 1.01 }} className="w-full p-4 rounded-xl bg-white/5 border border-white/10 focus:border-pink-500 focus:bg-white/10 outline-none transition-all text-white" value={bookingFormData.gender} onChange={(e) => setBookingFormData({...bookingFormData, gender: e.target.value})}>
+                            <option value="بنين">بنين</option>
+                            <option value="بنات">بنات</option>
+                        </motion.select>
+                    </div>
+                    <div>
+                        <label className="block mb-2 text-sm text-gray-300 font-medium">الصف</label>
+                        <motion.select whileFocus={{ scale: 1.01 }} className="w-full p-4 rounded-xl bg-white/5 border border-white/10 focus:border-pink-500 focus:bg-white/10 outline-none transition-all text-white" value={bookingFormData.year} onChange={(e) => setBookingFormData({...bookingFormData, year: e.target.value})}>
+                            <option value="أولي">أولي ثانوي</option>
+                            <option value="ثانية">ثانية ثانوي</option>
+                            <option value="ثالثة">ثالثة ثانوي</option>
+                        </motion.select>
+                    </div>
+                </div>
+
+                <div>
+                    <label className="block mb-2 text-sm text-gray-300 font-medium">رقم الهاتف</label>
+                    <motion.input whileFocus={{ scale: 1.01 }} type="tel" placeholder="010XXXXXXXX" required className="w-full p-4 rounded-xl bg-white/5 border border-white/10 focus:border-pink-500 focus:bg-white/10 outline-none transition-all placeholder:text-gray-600" value={bookingFormData.phone} onChange={(e) => setBookingFormData({...bookingFormData, phone: e.target.value})} />
+                </div>
+                
+                <div>
+                  <label className="block mb-4 text-sm text-gray-300 font-medium">اختر وسيلة الدفع</label>
+                  <div className="grid grid-cols-2 gap-3">
+                  {[
+                      { id: 'card', name: 'بطاقة ائتمان', icon: <CreditCard className="w-5 h-5" /> },
+                      { id: 'fawry', name: 'فوري', icon: <Receipt className="w-5 h-5" /> },
+                      { id: 'vodafone_cash', name: 'فودافون كاش', icon: <Smartphone className="w-5 h-5" /> },
+                      { id: 'orange_money', name: 'أورانج موني', icon: <Smartphone className="w-5 h-5" /> },
+                      { id: 'etisalat_cash', name: 'اتصالات كاش', icon: <Smartphone className="w-5 h-5" /> },
+                      { id: 'we_pay', name: 'وي باي', icon: <Smartphone className="w-5 h-5" /> },
+                    ].map(method => (
+                      <motion.button
+                        key={method.id}
+                        type="button"
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.95 }}
+                        onClick={() => setBookingFormData({...bookingFormData, paymentMethod: method.id})}
+                        className={`p-3 rounded-xl border transition-all text-sm font-bold flex items-center justify-center gap-2 ${bookingFormData.paymentMethod === method.id ? 'bg-pink-600/20 border-pink-500 text-white' : 'bg-white/5 border-white/10 text-gray-400 hover:border-pink-500/50'}`}
+                      >
+                        {method.icon}
+                        {method.name}
+                      </motion.button>
+                    ))}
+                  </div>
+                </div>
               </div>
-              <div className="flex gap-4 mt-8">
-                <motion.button whileTap={{ scale: 0.95 }} type="button" onClick={() => setIsModalOpen(false)} className="flex-1 p-4 rounded-xl font-bold bg-white/5 hover:bg-white/10 transition-colors">إلغاء</motion.button>
-                <motion.button whileTap={{ scale: 0.95 }} type="submit" disabled={isSubmitting} className="flex-1 p-4 rounded-xl font-black bg-pink-600 hover:bg-pink-500 transition-all disabled:opacity-50">
+              <div className="flex gap-4 mt-10">
+                <motion.button whileTap={{ scale: 0.95 }} type="button" onClick={() => setIsModalOpen(false)} className="flex-1 p-4 rounded-2xl font-bold bg-white/5 hover:bg-white/10 transition-colors border border-white/5">إلغاء</motion.button>
+                <motion.button whileTap={{ scale: 0.95 }} type="submit" disabled={isSubmitting} className="flex-1 p-4 rounded-2xl font-black bg-pink-600 hover:bg-pink-500 transition-all disabled:opacity-50 shadow-lg shadow-pink-900/40">
                   {isSubmitting ? 'جاري التأكيد...' : 'تأكيد الحجز'}
                 </motion.button>
               </div>
             </motion.form>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Payment Modal */}
+      <AnimatePresence>
+        {isPaymentModalOpen && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-gradient-to-tr from-[#111] to-[#1a1020] p-10 rounded-3xl border border-pink-500/30 w-full max-w-sm text-center shadow-2xl shadow-pink-500/20"
+            >
+              <div className="w-24 h-24 rounded-full bg-cyan-500/10 flex items-center justify-center mx-auto mb-8">
+                <PartyPopper className="w-12 h-12 text-cyan-500" />
+              </div>
+              <h2 className="text-4xl font-black mb-4 tracking-tighter">تقريباً انتهينا!</h2>
+              <p className="text-gray-400 text-lg mb-6">يُرجى إكمال عملية الدفع لتأكيد حجزك رسمياً.</p>
+              
+              <div className="flex flex-col gap-3">
+                <button 
+                  onClick={handlePayment}
+                  disabled={isPaymentLoading}
+                  className="w-full p-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 font-bold hover:scale-[1.02] transition-transform disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {isPaymentLoading ? (
+                    <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: "linear" }} className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full" />
+                  ) : 'إتمام الدفع وتأكيد الحجز'}
+                </button>
+                <button 
+                  onClick={() => setIsPaymentModalOpen(false)}
+                  className="w-full p-4 rounded-2xl bg-white/5 font-bold hover:bg-white/10 transition-colors"
+                >
+                  إلغاء الحجز
+                </button>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -256,19 +400,22 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-gradient-to-tr from-[#111] to-[#1a1020] p-10 rounded-3xl border border-pink-500/30 w-full max-w-sm text-center shadow-2xl shadow-pink-500/20"
+              className="bg-gradient-to-tr from-[#111] to-[#1a1020] p-10 rounded-3xl border border-green-500/30 w-full max-w-sm text-center shadow-2xl shadow-green-500/20"
             >
               <div className="w-24 h-24 rounded-full bg-green-500/10 flex items-center justify-center mx-auto mb-8 animate-pulse">
                 <CheckCircle className="w-12 h-12 text-green-500" />
               </div>
-              <h2 className="text-4xl font-black mb-4 tracking-tighter">تم الحجز!</h2>
-              <p className="text-gray-400 text-lg mb-10">نشوفك في الحفلة!</p>
-              <button 
-                onClick={() => setIsSuccessModalOpen(false)}
-                className="w-full p-4 rounded-2xl bg-gradient-to-r from-pink-600 to-purple-600 font-bold hover:scale-[1.02] transition-transform"
-              >
-                إغلاق
-              </button>
+              <h2 className="text-4xl font-black mb-4 tracking-tighter">تم الحجز بنجاح!</h2>
+              <p className="text-gray-400 text-lg mb-10">شكراً لك، ننتظرك في الحفلة!</p>
+              
+              <div className="flex flex-col gap-3">
+                <button 
+                  onClick={() => setIsSuccessModalOpen(false)}
+                  className="w-full p-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 font-bold hover:scale-[1.02] transition-transform"
+                >
+                  حسناً
+                </button>
+              </div>
             </motion.div>
           </motion.div>
         )}
@@ -280,6 +427,9 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
             <ContactPage onClose={() => setIsContactOpen(false)} />
         )}
       </AnimatePresence>
+
+      <VenueDetails />
+      <FAQ />
 
       {/* Visual Footer Stats */}
       <footer className="relative z-10 px-6 sm:px-12 py-6 sm:py-10 flex flex-col sm:flex-row items-center justify-between border-t border-white/5 gap-6">
