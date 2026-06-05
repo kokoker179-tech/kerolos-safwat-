@@ -171,18 +171,20 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   const handlePayment = async () => {
     setIsPaymentLoading(true);
     try {
-      const response = await fetch("/api/payment/create-kashier-session", {
+      const response = await fetch("/api/payment/process", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount: 100, currency: 'EGP', paymentMethod: pendingBooking.paymentMethod, paymentPhone: pendingBooking.phone })
+        body: JSON.stringify({ 
+          amount: 100, 
+          currency: 'EGP', 
+          paymentMethod: pendingBooking.paymentMethod, 
+          paymentPhone: pendingBooking.phone 
+        })
       });
       const data = await response.json();
       
-      // Simulate successful payment validation
-      if (data.url) {
-        // In real app, this redirects.
-        // For this task, assume redirected back with success query params.
-        
+      // Assume success if backend returns success: true
+      if (data.success) {
         // Finalize booking
         const db = getDb();
         await addDoc(collection(db, 'bookings'), pendingBooking);
@@ -190,9 +192,12 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
         setIsPaymentModalOpen(false);
         setIsSuccessModalOpen(true);
         setPendingBooking(null);
+      } else {
+        throw new Error("Payment failed");
       }
     } catch (error) {
       console.error("Payment error:", error);
+      // In a real app, show error message to user
     } finally {
       setIsPaymentLoading(false);
     }

@@ -30,29 +30,26 @@ async function startServer() {
     }
   });
 
-  app.post("/api/payment/create-kashier-session", async (req, res) => {
+  app.post("/api/payment/process", async (req, res) => {
     try {
-      const apiKey = process.env.KASHIER_API_KEY;
-      const mid = process.env.KASHIER_MID;
-      const { paymentMethod, paymentPhone } = req.body;
+      const apiKey = process.env.PAYMENT_GATEWAY_API_KEY;
+      const { paymentMethod, paymentPhone, amount } = req.body;
       
-      if (!apiKey || !mid) {
-        console.error("Missing KASHIER_API_KEY or KASHIER_MID. Set these in the Secrets panel in AI Studio UI to enable real payments.");
-        // Simulate successful response for testing purposes
-        res.json({ url: "https://kashier-sandbox.com/checkout/placeholder" });
+      console.log(`Processing payment via ${paymentMethod} for ${paymentPhone}, amount: ${amount}`);
+
+      if (!apiKey) {
+        console.warn("Payment gateway API Key missing. Simulating successful response for demo.");
+        res.json({ success: true, transactionId: "simulated_" + Date.now() });
         return;
       }
 
-      // TODO: Implement actual Kashier API call to generate checkout URL here
-      // Refer to Kashier official documentation for API request structure.
+      // TODO: Call actual Payment Gateway library or API here based on paymentMethod
+      // For now, simulating a successful API interaction
       
-      console.log("Generating Kashier payment for:", { ...req.body, paymentMethod, paymentPhone });
-      
-      // THIS IS A PLACEHOLDER
-      res.json({ url: "https://kashier-sandbox.com/checkout/placeholder" });
+      res.json({ success: true, transactionId: "trans_" + Date.now() });
       
     } catch (error) {
-      console.error(error);
+      console.error("Payment processing error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   });
